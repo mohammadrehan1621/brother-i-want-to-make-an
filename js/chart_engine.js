@@ -28,8 +28,28 @@ class ChartEngine {
     this.showMicroPrice = true;
     this.showMarkers = true;
 
+    this.seedDefaultCandles();
     this.initEvents();
     this.resize();
+  }
+
+  seedDefaultCandles() {
+    const now = Date.now();
+    let price = 84200.0;
+    const count = 35;
+    this.candles = [];
+    for (let i = count; i >= 0; i--) {
+      const time = now - (i * 60000);
+      const delta = (Math.random() - 0.49) * 25.0;
+      const open = price;
+      const close = price + delta;
+      const high = Math.max(open, close) + Math.random() * 12.0;
+      const low = Math.min(open, close) - Math.random() * 12.0;
+      const volume = 0.5 + Math.random() * 2.5;
+      const microPrice = (open + close) / 2 + (Math.random() - 0.5) * 4.0;
+      this.candles.push({ time, open, high, low, close, volume, microPrice });
+      price = close;
+    }
   }
 
   resize() {
