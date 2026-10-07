@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXUS-HFT // Quantum AI Autonomous Trading Bot</title>
+  <link rel="stylesheet" href="css/terminal.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ================= TOP HEADER ================= -->
+  <header class="terminal-header">
+    <div class="brand-section">
+      <div class="brand-logo">
+        <span style="color: var(--ai-cyan);">⚡ NEXUS-HFT</span>
+        <span class="brand-badge">QUANTUM AI</span>
+      </div>
+      <div class="pair-pill-group">
+        <button class="pair-pill active" data-symbol="BTCUSDT">BTC/USDT</button>
+        <button class="pair-pill" data-symbol="ETHUSDT">ETH/USDT</button>
+        <button class="pair-pill" data-symbol="SOLUSDT">SOL/USDT</button>
+        <button class="pair-pill" data-symbol="BNBUSDT">BNB/USDT</button>
+        <button class="pair-pill" data-symbol="DOGEUSDT">DOGE/USDT</button>
+        <button class="pair-pill" data-symbol="XRPUSDT">XRP/USDT</button>
+      </div>
+    </div>
+
+    <!-- Live Ticker & Feed Latency -->
+    <div class="header-ticker">
+      <div class="ticker-substat">
+        <span class="lbl">Live Price</span>
+        <span id="headerPrice" class="ticker-price-large" style="color: var(--bid-green);">$0.00</span>
+      </div>
+      <div class="ticker-substat">
+        <span class="lbl">Engine Latency</span>
+        <span id="internalLatencyBadge" class="latency-chip latency-ultra">⚡ Engine: 0.82ms</span>
+      </div>
+      <div class="ticker-substat">
+        <span class="lbl">Feed Telemetry</span>
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+          <span id="feedStatusDot" class="live-dot"></span>
+          <span id="feedStatusLabel" style="font-size: 11px; font-weight: 700; color: var(--text-muted);">CONNECTING</span>
+          <span id="wsPingBadge" class="latency-chip latency-ultra">Binance RTT: 18ms</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Execution Modes & Bot Controls -->
+    <div class="header-actions">
+      <div class="mode-toggle-group">
+        <button id="modePaper" class="mode-btn active-paper">🛡️ Paper</button>
+        <button id="modeTestnet" class="mode-btn">🧪 Testnet</button>
+        <button id="modeLive" class="mode-btn">⚡ Live API</button>
+      </div>
+
+      <button id="btnAutoPilot" class="btn-autopilot">
+        <span class="autopilot-pulse-dot"></span>
+        AUTO-PILOT [STANDBY]
+      </button>
+
+      <button id="btnKillSwitch" class="btn-quant btn-kill" title="Immediately halts bot and liquidates all open positions">
+        🚨 KILL SWITCH
+      </button>
+
+      <button id="btnOpenSettings" class="btn-quant" title="Binance API & Risk Configuration">
+        ⚙️ Settings
+      </button>
+
+      <button id="btnToggleSound" class="btn-quant" style="padding: 6px 8px;" title="Toggle Execution Audio">
+        🔊 Sound: ON
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= TOP KPI STRIP ================= -->
+  <section class="kpi-strip">
+    <div class="kpi-item">
+      <span class="kpi-label">Portfolio Value</span>
+      <span id="kpiEquity" class="kpi-value cyan">$10,000.00</span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Realized PnL</span>
+      <span id="kpiRealizedPnl" class="kpi-value green">+$0.00</span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Win Rate</span>
+      <span id="kpiWinRate" class="kpi-value">0.0%</span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Total Trades</span>
+      <span id="kpiTradeCount" class="kpi-value">0</span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">L2 Imbalance (OBI)</span>
+      <span id="kpiObi" class="kpi-value green">+0.0%</span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Micro-Price Gap</span>
+      <span id="kpiGap" class="kpi-value cyan">+0.00 bps</span>
+    </div>
+    <div class="kpi-item">
+      <span class="kpi-label">Fair Micro-Price</span>
+      <span id="kpiMicroPrice" class="kpi-value cyan">$0.00</span>
+    </div>
+  </section>
+
+  <!-- ================= MAIN WORKSPACE GRID ================= -->
+  <main class="main-workspace">
+
+    <!-- ========== LEFT COLUMN: L2 ORDER BOOK DOM ========== -->
+    <div class="quant-card">
+      <div class="quant-card-header">
+        <span>L2 Order Book Depth [100ms]</span>
+        <span style="color: var(--ai-cyan);">Depth20 Feed</span>
+      </div>
+      <div class="quant-card-body" style="padding: 6px; display: flex; flex-direction: column; justify-content: space-between;">
+        
+        <div>
+          <div class="dom-header">
+            <span>Price (USDT)</span>
+            <span style="text-align: right;">Size</span>
+            <span style="text-align: right;">Total</span>
+          </div>
+
+          <!-- Asks (Red) -->
+          <div id="domAsks" style="display: flex; flex-direction: column;">
+            <div style="text-align: center; padding: 14px; color: var(--text-dim);">Connecting to Binance Depth...</div>
+          </div>
+
+          <!-- Dynamic Spread Divider -->
+          <div class="dom-spread-row">
+            <span style="color: var(--text-muted); font-size: 10px;">SPREAD</span>
+            <span id="domSpreadVal" style="color: var(--text-main); font-weight: 800;">$0.00</span>
+            <span id="domSpreadBps" class="latency-chip latency-ultra" style="font-size: 9.5px;">0.00 bps</span>
+          </div>
+
+          <!-- Bids (Green) -->
+          <div id="domBids" style="display: flex; flex-direction: column;">
+            <div style="text-align: center; padding: 14px; color: var(--text-dim);">Awaiting bids...</div>
+          </div>
+        </div>
+
+        <!-- Order Book Imbalance Gauge -->
+        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
+          <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">
+            <span>Bid Flow Wall</span>
+            <strong id="imbalancePctLabel" style="color: var(--bid-green);">+0.0%</strong>
+            <span>Ask Flow Wall</span>
+          </div>
+          <div class="imbalance-gauge-track">
+            <div id="imbalanceGaugeBar" class="imbalance-gauge-bid" style="width: 50%;"></div>
+            <div class="imbalance-center-line"></div>
+          </div>
+        </div>
+
+        <!-- Microstructure Alpha Indicators -->
+        <div class="alpha-matrix">
+          <div class="alpha-factor-box">
+            <div class="title">Weighted OBI (5-Lvl)</div>
+            <div id="alphaObi5" class="val" style="color: var(--bid-green);">0.0%</div>
+          </div>
+          <div class="alpha-factor-box">
+            <div class="title">Micro-Gap (bps)</div>
+            <div id="alphaGap" class="val" style="color: var(--ai-cyan);">0.00 bps</div>
+          </div>
+          <div class="alpha-factor-box">
+            <div class="title">3s Flow Imbalance</div>
+            <div id="alphaFlow" class="val" style="color: var(--purple-accent);">0.0%</div>
+          </div>
+          <div class="alpha-factor-box">
+            <div class="title">Execution Latency</div>
+            <div class="val" style="color: #34d399;">~0.8ms ⚡</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ========== CENTER COLUMN: CHART & AI SIGNAL MATRIX ========== -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      
+      <!-- Real-Time Microstructure Chart -->
+      <div class="quant-card" style="flex: 1;">
+        <div class="quant-card-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span>Micro-Price & Tick Stream</span>
+            <span class="latency-chip latency-ultra" style="font-size: 9px;">60 FPS Native Canvas</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 14px; font-size: 10.5px;">
+            <span><span style="color: #06b6d4;">━</span> Micro-Price</span>
+            <span><span style="color: #10b981;">▲</span> Buy Fill</span>
+            <span><span style="color: #f43f5e;">▼</span> Sell Fill</span>
+          </div>
+        </div>
+        <div class="quant-card-body" style="padding: 0; position: relative;">
+          <div class="chart-container">
+            <canvas id="mainChart"></canvas>
+            <div class="chart-overlay-watermark">
+              <span style="font-size: 11px; font-weight: 800; color: rgba(255,255,255,0.15);">NEXUS QUANTUM AI // LOW-LATENCY TICK ENGINE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Signal Banner & Instant Trade Pad -->
+      <div class="quant-card">
+        <div class="quant-card-header">
+          <span>AI Neural Alpha Signal Matrix</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="color: var(--text-dim);">Confidence:</span>
+            <strong id="aiConfidenceVal" style="color: var(--ai-cyan);">0%</strong>
+          </div>
+        </div>
+        <div class="quant-card-body" style="padding: 10px;">
+          <div class="ai-signal-banner">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div id="aiSignalBadge" class="ai-signal-badge neutral">NEUTRAL</div>
+              <div>
+                <div style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Real-Time Execution Rationale</div>
+                <div id="aiSignalReason" style="font-size: 12px; font-weight: 600; color: var(--text-main); margin-top: 1px;">
+                  Monitoring Binance depth stream for queue depletion...
+                </div>
+              </div>
+            </div>
+
+            <!-- Manual Order Pad -->
+            <div style="display: flex; gap: 8px;">
+              <button id="btnManualBuy" class="btn-quant btn-bid">
+                BUY / LONG
+              </button>
+              <button id="btnManualSell" class="btn-quant btn-ask">
+                SELL / SHORT
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========== RIGHT COLUMN: BOT CONTROLS & POSITION ========== -->
+    <div class="column-controls" style="display: flex; flex-direction: column; gap: 10px;">
+      
+      <!-- Bot Strategy & Risk Management Parameters -->
+      <div class="quant-card">
+        <div class="quant-card-header">
+          <span>Autonomous AI Configuration</span>
+          <span style="color: var(--ai-cyan);">Risk Guard Active</span>
+        </div>
+        <div class="quant-card-body">
+          
+          <div class="control-form-group">
+            <div class="control-label-row">
+              <span>Execution Strategy</span>
+            </div>
+            <select id="strategySelector" class="control-input-styled">
+              <option value="ALL_HYBRID">Institutional Hybrid (OBI + Gap + AI Alpha)</option>
+              <option value="OBI_SCALPER">L2 Order Book Imbalance (OBI) Scalper</option>
+              <option value="GAP_ARBITRAGE">Micro-Price Gap & Depletion Arbitrage</option>
+              <option value="AI_ALPHA">Neural Micro-Alpha Momentum</option>
+            </select>
+          </div>
+
+          <div class="control-form-group">
+            <div class="control-label-row">
+              <span>Position Size (USDT)</span>
+              <strong id="lblTradeSize" style="color: var(--ai-cyan); font-weight: 700;">$250</strong>
+            </div>
+            <input type="range" id="sliderTradeSize" min="50" max="2500" step="50" value="250">
+          </div>
+
+          <div class="control-form-group">
+            <div class="control-label-row">
+              <span>Take Profit Target</span>
+              <strong id="lblTpBps" style="color: var(--bid-green); font-weight: 700;">15 bps (0.15%)</strong>
+            </div>
+            <input type="range" id="sliderTpBps" min="5" max="60" step="1" value="15">
+          </div>
+
+          <div class="control-form-group">
+            <div class="control-label-row">
+              <span>Stop Loss Protection</span>
+              <strong id="lblSlBps" style="color: var(--ask-red); font-weight: 700;">10 bps (0.10%)</strong>
+            </div>
+            <input type="range" id="sliderSlBps" min="4" max="40" step="1" value="10">
+          </div>
+
+          <div class="control-form-group">
+            <div class="control-label-row">
+              <span>OBI Imbalance Trigger</span>
+              <strong id="lblObiThresh" style="color: var(--latency-amber); font-weight: 700;">60%</strong>
+            </div>
+            <input type="range" id="sliderObiThresh" min="45" max="85" step="5" value="60">
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Active Position Card -->
+      <div class="quant-card" style="flex: 1;">
+        <div class="quant-card-header">
+          <span>Active Position Tracker</span>
+          <span style="color: var(--bid-green);">Trailing Stop Active</span>
+        </div>
+        <div class="quant-card-body" style="display: flex; flex-direction: column; justify-content: space-between;">
+          
+          <div id="emptyPositionNotice" style="text-align: center; padding: 24px 10px; color: var(--text-dim);">
+            No open position.<br>Waiting for AI trigger signal...
+          </div>
+
+          <div id="activePositionBox" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span class="pos-side-badge btn-bid" style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 800;">LONG</span>
+              <span class="pos-size-val" style="font-size: 11.5px; font-weight: 700;">0.0035 BTC</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+              <div class="alpha-factor-box">
+                <div class="title">Entry Price</div>
+                <div class="pos-entry-price val">$0.00</div>
+              </div>
+              <div class="alpha-factor-box">
+                <div class="title">Mark Price</div>
+                <div class="pos-mark-price val">$0.00</div>
+              </div>
+            </div>
+
+            <div style="background: var(--bg-card-elevated); border: 1px solid var(--border-bright); border-radius: 6px; padding: 8px; text-align: center; margin-bottom: 12px;">
+              <div style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Unrealized PnL</div>
+              <div class="pos-pnl-val" style="font-size: 16px; font-weight: 800; color: var(--bid-green); margin-top: 2px;">
+                +$0.00 (+0.00%)
+              </div>
+            </div>
+
+            <button id="btnClosePosition" class="btn-quant" style="width: 100%; justify-content: center; background: #1e293b; border-color: #475569;">
+              Close Position At Market
+            </button>
+          </div>
+
+          <div style="font-size: 10px; color: var(--text-dim); padding-top: 8px; border-top: 1px solid var(--border-subtle); line-height: 1.4;">
+            🛡️ <strong>HFT Safety Protocol</strong>: Positions are auto-closed if Order Book Imbalance crashes against trade direction or if Trailing Profit targets are reached.
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ================= BOTTOM TABBED BLOTTER ================= -->
+  <section class="blotter-section">
+    <div class="blotter-tabs">
+      <button class="tab-btn active" data-tab="blotter">Trade Execution Blotter</button>
+      <button class="tab-btn" data-tab="positions">Active Positions</button>
+      <button class="tab-btn" data-tab="logs">AI Neural Diagnostics Log</button>
+    </div>
+
+    <!-- Tab 1: Trade History -->
+    <div id="tabTradeBlotter" class="tab-content table-responsive" style="display: block;">
+      <table class="quant-table">
+        <thead>
+          <tr>
+            <th>Time (UTC)</th>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Exec Price</th>
+            <th>Quantity</th>
+            <th>Notional (USDT)</th>
+            <th>Latency</th>
+            <th>Realized PnL</th>
+            <th>Trigger Alpha</th>
+          </tr>
+        </thead>
+        <tbody id="tradeBlotterBody">
+          <tr>
+            <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 20px;">
+              No trades executed yet. Turn on Auto-Pilot to begin automated trading.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Tab 2: Active Positions -->
+    <div id="tabActivePositions" class="tab-content table-responsive" style="display: none; padding: 14px;">
+      <div style="color: var(--text-muted); font-size: 11px;">
+        Active position status is mirrored in the side panel. All fills adhere to sub-millisecond tick matching.
+      </div>
+    </div>
+
+    <!-- Tab 3: System Logs -->
+    <div id="tabSystemLogs" class="tab-content table-responsive" style="display: none; padding: 10px; background: #05070c;">
+      <div id="systemLogContainer"></div>
+    </div>
+  </section>
+
+  <!-- ================= SETTINGS & BINANCE API MODAL ================= -->
+  <div id="settingsModal" class="modal-backdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <span>Binance API & Quantitative Settings</span>
+        <button id="btnCloseModal" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer;">✕</button>
+      </div>
+      <div class="modal-body">
+        
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;">
+            Binance API Key
+          </label>
+          <input type="password" id="inputApiKey" class="control-input-styled" placeholder="Enter your Binance API Key">
+        </div>
+
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;">
+            Binance Secret Key
+          </label>
+          <input type="password" id="inputApiSecret" class="control-input-styled" placeholder="Enter your Binance Secret Key">
+        </div>
+
+        <div style="background: rgba(14, 165, 233, 0.08); border: 1px solid rgba(14, 165, 233, 0.2); border-radius: 6px; padding: 10px; font-size: 11px; color: var(--text-muted);">
+          🔒 <strong>Local Security Guarantee</strong>: Your API keys never leave your browser. HMAC-SHA256 signatures are calculated locally using the browser's hardware-accelerated Web Crypto API.
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button id="btnTestApi" class="btn-quant" style="flex: 1; justify-content: center;">
+            🧪 Test API Connection
+          </button>
+          <button id="btnResetWallet" class="btn-quant" style="justify-content: center; background: #27272a;">
+            🔄 Reset Paper Wallet ($10k)
+          </button>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button id="btnSaveSettings" class="btn-quant btn-bid" style="padding: 6px 18px;">
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Alerts Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Core JavaScript Modules -->
+  <script src="js/binance_feed.js"></script>
+  <script src="js/orderbook_engine.js"></script>
+  <script src="js/hft_strategy.js"></script>
+  <script src="js/execution_engine.js"></script>
+  <script src="js/chart_engine.js"></script>
+  <script src="js/terminal_app.js"></script>
+</body>
+</html>
